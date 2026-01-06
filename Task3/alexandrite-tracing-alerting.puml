@@ -1,0 +1,47 @@
+@startuml Alexandrite_Tracing_Alerting
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+title Alexandrite — Tracing + Trace-based Monitoring & Alerting
+
+' === Tags ===
+AddElementTag("new", $bgColor="#ffe5e5", $borderColor="#cc0000", $fontColor="#222222")
+AddElementTag("auto", $bgColor="#e8ffea", $borderColor="#1a7f37", $fontColor="#222222")
+AddElementTag("traced", $borderColor="#1f6feb")
+
+skinparam nodesep 60
+skinparam ranksep 90
+
+System_Boundary(jss, "Jewelry Store System") {
+
+  Container(shopApi, "Shop API", "Spring Boot", "Order creation, file upload, submit", $tags="traced")
+  Container(crmApi, "CRM API", "Spring Boot", "Order approval, status operations", $tags="traced")
+  Container(mesApi, "MES API", "C#", "Price calculation, assignments, statuses", $tags="traced")
+
+  ContainerQueue(msgQueue, "RabbitMQ", "RabbitMQ", "Events about orders and statuses", $tags="traced")
+
+  System_Boundary(obs, "Observability") {
+    Container(otelcol, "OpenTelemetry Collector", "OpenTelemetry", "Receives traces; spanmetrics/servicegraph; exports", $tags="new")
+    Container(jaeger, "Jaeger", "Jaeger", "Trace storage + UI", $tags="new")
+
+    Container(prom, "Prometheus (metrics store)", "Prometheus/Managed", "Stores metrics generated from spans", $tags="auto")
+    Container(grafana, "Grafana", "Grafana", "Dashboards + alert rules", $tags="auto")
+    Container(alert, "Alertmanager", "Alertmanager", "Routes notifications", $tags="auto")
+  }
+}
+
+Rel(shopApi, otelcol, "Exports traces", "OTLP")
+Rel(crmApi, otelcol, "Exports traces", "OTLP")
+Rel(mesApi, otelcol, "Exports traces", "OTLP")
+
+Rel(crmApi, msgQueue, "Publishes/Consumes events (trace context)", "AMQP + trace headers")
+Rel(mesApi, msgQueue, "Publishes/Consumes events (trace context)", "AMQP + trace headers")
+
+Rel(otelcol, jaeger, "Exports traces", "Jaeger/OTLP")
+Rel(otelcol, prom, "Exports span-derived metrics", "Prometheus remote-write / scrape")
+
+Rel(grafana, prom, "Queries metrics", "HTTP")
+Rel(grafana, jaeger, "Links to traces by trace_id", "HTTP")
+Rel(grafana, alert, "Sends alerts", "HTTP/Webhook")
+
+@enduml

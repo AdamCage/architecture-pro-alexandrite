@@ -1,0 +1,14 @@
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: simplest
+  namespace: observability
+spec:
+  strategy: allInOne
+  allInOne:
+    options:
+      collector:
+        otlp:
+          enabled: true
+  ingress:
+    enabled: false

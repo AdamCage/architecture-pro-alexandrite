@@ -1,0 +1,58 @@
+@startuml Alexandrite_Tracing
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+title Alexandrite — Tracing (OpenTelemetry + Jaeger)
+
+' === Tags ===
+AddElementTag("new", $bgColor="#ffe5e5", $borderColor="#cc0000", $fontColor="#222222")
+AddElementTag("traced", $borderColor="#1f6feb")
+
+skinparam nodesep 60
+skinparam ranksep 90
+
+Person(customer, "Customer", "B2C")
+Person(seller, "Seller", "CRM user")
+Person(apiUser, "API user", "B2B partner")
+Person(operator, "Operator", "MES user")
+
+System_Boundary(jss, "Jewelry Store System") {
+
+  Container(shopApi, "Shop API", "Spring Boot", "Order creation, file upload, submit", $tags="traced")
+  Container(crmApi, "CRM API", "Spring Boot", "Order approval, status operations", $tags="traced")
+  Container(mesApi, "MES API", "C#", "Price calculation, assignments, statuses", $tags="traced")
+
+  ContainerQueue(msgQueue, "RabbitMQ", "RabbitMQ", "Events about orders and statuses", $tags="traced")
+  ContainerDb(shopDb, "Shop DB", "PostgreSQL", "Orders (customer view)", $tags="traced")
+  ContainerDb(mesDb, "MES DB", "PostgreSQL", "Orders (MES view)", $tags="traced")
+  Container(storage3d, "3D files storage", "S3", "Stores 3D models", $tags="traced")
+
+  System_Boundary(obs, "Observability") {
+    Container(otelcol, "OpenTelemetry Collector", "OpenTelemetry", "Receives traces, enriches, samples, exports", $tags="new")
+    Container(jaeger, "Jaeger", "Jaeger", "Trace storage + UI", $tags="new")
+  }
+}
+
+Rel(customer, shopApi, "Calls", "HTTPS")
+Rel(seller, crmApi, "Calls", "HTTPS")
+Rel(apiUser, mesApi, "Calls", "HTTPS")
+Rel(operator, mesApi, "Calls (via MES UI)", "HTTPS")
+
+Rel(shopApi, shopDb, "Reads/Writes", "JDBC")
+Rel(crmApi, shopDb, "Reads/Writes", "JDBC")
+Rel(mesApi, mesDb, "Reads/Writes", "JDBC")
+
+Rel(shopApi, storage3d, "Uploads 3D files", "S3")
+Rel(crmApi, storage3d, "Reads 3D files", "S3")
+Rel(mesApi, storage3d, "Loads 3D files for calc", "S3")
+
+Rel(crmApi, msgQueue, "Publishes/Consumes events (trace context in headers)", "AMQP + W3C tracecontext")
+Rel(mesApi, msgQueue, "Publishes/Consumes events (trace context in headers)", "AMQP + W3C tracecontext")
+
+Rel(shopApi, otelcol, "Exports traces", "OTLP")
+Rel(crmApi, otelcol, "Exports traces", "OTLP")
+Rel(mesApi, otelcol, "Exports traces", "OTLP")
+
+Rel(otelcol, jaeger, "Exports traces", "Jaeger/OTLP")
+
+@enduml
