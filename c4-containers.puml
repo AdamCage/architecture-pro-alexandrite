@@ -1,0 +1,75 @@
+@startuml JewelryStoreSystem_Containers
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+title Jewelry Store System — C4 Container Diagram
+
+skinparam nodesep 60
+skinparam ranksep 100
+
+Person(customer, "Customer", "External person")
+Person(seller, "Seller", "Operates with order, confirms manufacturing for the user")
+Person(apiUser, "API user", "External person")
+Person(operator, "Operator", "Takes order in work, manufactures jewelry")
+
+System_Boundary(jss, "Jewelry Store System") {
+
+  Container(internetShop, "Internet Shop", "Vue, TypeScript, Three.js", "User can make an order, upload 3d model, work in 3d editor")
+
+  Container(crm, "CRM", "Vue, TypeScript", "Seller web UI to operate orders")
+
+  Container(mes, "MES", "React, TypeScript", "Operator UI: assign orders, view list of orders")
+
+  Container(shopApi, "Shop API", "Spring Boot", "Provides list of shop items; receives/uploaded 3d file; saves order info (customer perspective)")
+
+  Container(crmApi, "CRM API", "Spring Boot", "Backend for CRM operations (orders/statuses)")
+
+  Container(mesApi, "MES API", "C#", "Assigns orders to operators; shows list of orders; calculates order price")
+
+  Container(storage3d, "3d files storage", "S3-based storage", "Stores 3d files so that can be calculated")
+
+  ContainerQueue(msgQueue, "Messages Queue", "RabbitMQ", "Messages about new orders and status changes between containers; several topics")
+
+  ContainerDb(shopDb, "Shop DB", "PostgreSQL", "Main information about customers and their orders")
+
+  ContainerDb(mesDb, "MES db", "PostgreSQL", "Orders, assignments to operators, and statuses from MES perspective")
+}
+
+Rel(customer, internetShop, "Uses")
+Rel(internetShop, shopApi, "Calls", "HTTPS")
+Rel(shopApi, shopDb, "Reads/Writes", "JDBC")
+Rel(shopApi, storage3d, "Uploads files")
+
+Rel(seller, crm, "Uses")
+Rel(crm, crmApi, "Calls", "HTTPS")
+Rel(crmApi, shopDb, "Reads/Writes", "JDBC")
+Rel(crmApi, storage3d, "Accesses 3d files")
+
+Rel(crmApi, msgQueue, "Publishes events/Delivers events")
+
+Rel(apiUser, mesApi, "Calls", "HTTPS")
+Rel(operator, mes, "Uses")
+Rel(mes, mesApi, "Calls", "HTTPS")
+Rel(mesApi, mesDb, "Reads/Writes", "JDBC")
+Rel(mesApi, storage3d, "Loads 3d files for calculations")
+Rel(mesApi, msgQueue, "Delivers order/status events")
+
+Lay_D(customer, seller)
+Lay_D(seller, apiUser)
+Lay_D(apiUser, operator)
+
+Lay_R(customer, internetShop)
+Lay_D(internetShop, crm)
+Lay_D(crm, mes)
+
+Lay_R(internetShop, shopApi)
+Lay_D(shopApi, crmApi)
+Lay_D(crmApi, storage3d)
+
+Lay_R(shopApi, shopDb)
+Lay_R(crmApi, msgQueue)
+
+Lay_R(mesApi, mesDb)
+Lay_U(mesDb, msgQueue)
+
+@enduml
