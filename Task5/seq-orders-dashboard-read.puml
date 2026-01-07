@@ -1,0 +1,33 @@
+@startuml MES_Orders_Dashboard_Read
+title MES Dashboard - Read orders list (with server-side cache)
+
+actor Operator
+participant "MES UI (React)" as UI
+participant "MES API" as API
+participant "Redis Cache" as Cache
+database "MES DB (PostgreSQL)" as DB
+
+== Get newest orders by status ==
+Operator -> UI: Open dashboard / select status
+UI -> API: GET /orders?status=S&page=1&limit=L
+
+API -> Cache: GET mes:orders:list:S:p1:lL
+alt Cache HIT
+  Cache --> API: JSON list
+  API --> UI: 200 OK (list)
+else Cache MISS
+  Cache --> API: null
+  API -> Cache: SETNX lock:mes:orders:list:S:p1:lL (short TTL)
+  alt Lock acquired
+    API -> DB: SELECT ... WHERE status=S ORDER BY created_at DESC LIMIT L OFFSET ...
+    DB --> API: rows
+    API -> Cache: SET mes:orders:list:S:p1:lL (TTL 10-30s)
+    API --> UI: 200 OK (list)
+  else Lock not acquired
+    API -> Cache: GET mes:orders:list:S:p1:lL (retry)
+    Cache --> API: JSON list (soon)
+    API --> UI: 200 OK (list)
+  end
+end
+
+@enduml

@@ -1,0 +1,34 @@
+@startuml MES_Order_Status_Write
+title MES - Write status change (with cache invalidation)
+
+actor Operator
+participant "MES UI (React)" as UI
+participant "MES API" as API
+database "MES DB (PostgreSQL)" as DB
+participant "Redis Cache" as Cache
+queue "RabbitMQ" as MQ
+participant "CRM API" as CRM
+
+== Operator takes order / changes status ==
+Operator -> UI: Click "Take in work"
+UI -> API: POST /orders/{order_id}/status {to=MANUFACTURING_STARTED}
+
+API -> DB: BEGIN
+API -> DB: UPDATE orders SET status=to, status_changed_at=now() WHERE id=order_id
+DB --> API: OK
+API -> DB: COMMIT
+
+== Cache invalidation / update ==
+API -> Cache: DEL mes:orders:list:FROM:* (first pages)
+API -> Cache: DEL mes:orders:list:TO:* (first pages)
+API -> Cache: ZREM mes:orders:latest:FROM order_id
+API -> Cache: ZADD mes:orders:latest:TO score=now() member=order_id
+
+== Publish event to integration ==
+API -> MQ: PUBLISH event(status_changed, order_id, from, to, message_id)
+MQ --> CRM: DELIVER event(status_changed)
+CRM -> CRM: Update shop/CRM view (if needed)
+
+API --> UI: 200 OK
+
+@enduml
