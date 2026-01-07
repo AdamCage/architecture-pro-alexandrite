@@ -1,0 +1,63 @@
+@startuml Alexandrite_Logging
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+title Alexandrite — Logging (centralized)
+
+AddElementTag("new", $bgColor="#ffe5e5", $borderColor="#cc0000", $fontColor="#222222")
+AddElementTag("logs", $borderColor="#6f42c1")
+
+skinparam nodesep 60
+skinparam ranksep 90
+
+Person(customer, "Customer", "B2C")
+Person(seller, "Seller", "CRM user")
+Person(apiUser, "API user", "B2B partner")
+Person(operator, "Operator", "MES user")
+
+System_Boundary(jss, "Jewelry Store System") {
+
+  Container(shopApi, "Shop API", "Spring Boot", "Orders + files", $tags="logs")
+  Container(crmApi, "CRM API", "Spring Boot", "Approval + statuses", $tags="logs")
+  Container(mesApi, "MES API", "C#", "Price calc + manufacturing", $tags="logs")
+
+  ContainerQueue(msgQueue, "RabbitMQ", "RabbitMQ", "Order/status events", $tags="logs")
+
+  ContainerDb(shopDb, "Shop DB", "PostgreSQL", "Orders (shop view)", $tags="logs")
+  ContainerDb(mesDb, "MES DB", "PostgreSQL", "Orders (MES view)", $tags="logs")
+  Container(storage3d, "3D files storage", "S3", "3D models", $tags="logs")
+
+  System_Boundary(obs, "Observability") {
+    Container(logAgent, "Log Agent", "Fluent Bit / Vector", "Collects & ships logs", $tags="new")
+    Container(logStore, "Log Storage", "OpenSearch", "Indexes and stores logs", $tags="new")
+    Container(logUI, "Log UI", "OpenSearch Dashboards / Grafana", "Search, dashboards, alerts", $tags="new")
+  }
+}
+
+Rel(customer, shopApi, "Calls", "HTTPS")
+Rel(seller, crmApi, "Calls", "HTTPS")
+Rel(apiUser, mesApi, "Calls", "HTTPS")
+Rel(operator, mesApi, "Calls", "HTTPS")
+
+Rel(shopApi, msgQueue, "Publishes events", "AMQP")
+Rel(crmApi, msgQueue, "Publishes/Consumes events", "AMQP")
+Rel(mesApi, msgQueue, "Publishes/Consumes events", "AMQP")
+
+Rel(shopApi, shopDb, "Reads/Writes", "JDBC")
+Rel(crmApi, shopDb, "Reads/Writes", "JDBC")
+Rel(mesApi, mesDb, "Reads/Writes", "JDBC")
+
+Rel(shopApi, storage3d, "Uploads", "S3")
+Rel(crmApi, storage3d, "Reads", "S3")
+Rel(mesApi, storage3d, "Downloads for calc", "S3")
+
+' Logs flow
+Rel(shopApi, logAgent, "Writes logs (JSON)", "stdout/files")
+Rel(crmApi, logAgent, "Writes logs (JSON)", "stdout/files")
+Rel(mesApi, logAgent, "Writes logs (JSON)", "stdout/files")
+Rel(msgQueue, logAgent, "Broker logs / events (optional)", "logs/metrics")
+
+Rel(logAgent, logStore, "Ships logs", "HTTP/S")
+Rel(logUI, logStore, "Queries", "HTTP/S")
+
+@enduml
